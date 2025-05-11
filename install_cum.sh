@@ -317,4 +317,4 @@ echo ""
 echo "If the hook doesn't run after 'git commit', check 'git config core.hooksPath'."
 echo "Script execution finished at: $(date)"
 
-exit 0
+exit 0 
