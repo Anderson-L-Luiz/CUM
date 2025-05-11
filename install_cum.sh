@@ -157,7 +157,8 @@ commit_date=$(git log -1 --pretty=format:'%ad' --date=iso-local)
 
 echo "🔎 Analyzing commit: $commit_short_hash by $commit_author on $commit_date"
 
-diff_output=$(git show --format="--pretty=format:" "$commit_hash")
+# CORRECTED LINE: Use --pretty=format: to get only the diff
+diff_output=$(git show --pretty=format: "$commit_hash")
 
 if [ -z "$diff_output" ]; then
   echo "⚠️ No textual changes found in commit $commit_short_hash to summarize. Skipping API call."
@@ -182,8 +183,6 @@ if [ $? -ne 0 ]; then
     exit 0 # Allowing push, but logging error
 fi
 
-# Use curl with options for timeout, silent operation on success, but show error on failure
-# The --fail option makes curl return exit code 22 on HTTP 4xx/5xx errors
 api_response=$(curl --silent --fail --show-error -X POST \
   -H "Content-Type: application/json" \
   -d "$payload" \
@@ -198,13 +197,9 @@ if [ $curl_exit_status -ne 0 ]; then
   echo "❌ Hook Error: Failed to connect to LLM API or API returned an error." >&2
   echo "Curl exit code: $curl_exit_status. This might be due to network issues, API server down, incorrect URL, or the payload being rejected." >&2
   summary_text="Automated summary generation failed: LLM API request error (curl code: $curl_exit_status)."
-  # To allow the push despite failure, this script will continue and log this summary. To block, 'exit 1' here.
 else
-  # Try to extract summary from response
-  # Path 1: .text[0] (often for single string prompt responses in some vLLM setups)
   extracted_text=$(echo "$api_response" | jq -r '.text[0]') 
   if [ "$extracted_text" == "null" ] || [ -z "$extracted_text" ]; then
-      # Path 2: .results[0].text (original user path)
       extracted_text=$(echo "$api_response" | jq -r '.results[0].text')
   fi
 
@@ -218,13 +213,13 @@ else
   fi
 fi
 
-# Escape LaTeX special characters in the summary
+# CORRECTED TILDE ESCAPING
 escaped_summary=$(echo "$summary_text" | sed \
   -e 's/\\/\\textbackslash{}/g' \
   -e 's/{/\\{/g'   -e 's/}/\\}/g' \
   -e 's/\$/\\\$/g' -e 's/&/\\&/g' \
   -e 's/#/\\#/g'   -e 's/_/\\_/g' \
-  -e 's/%/\\%/g'   -e 's/~/\$\\textasciitilde{}\$/g' \
+  -e 's/%/\\%/g'   -e 's/~/\\textasciitilde{}/g' \
   -e 's/\^/\\^{}/g' \
   -e 's/</\\textless{}/g' -e 's/>/\\textgreater{}/g' \
   -e 's/-/--/g')
@@ -244,8 +239,7 @@ $escaped_summary
 \\end{itemize}
 \\hrulefill % A horizontal line before the next entry
 "
-# Append the new section before \end{document} in the LaTeX file
-TMP_TEX_FILE="$GIT_ROOT_DIR/CUM_report/tmp_commit_log.$$.tex" # $$ provides a unique process ID
+TMP_TEX_FILE="$GIT_ROOT_DIR/CUM_report/tmp_commit_log.$$.tex"
 awk -v section="$section_content" '/\\end\{document\}/{print section}1' "$TEX_FILE_PATH" > "$TMP_TEX_FILE"
 awk_status=$?
 
@@ -255,20 +249,17 @@ if [ $awk_status -eq 0 ]; then
         echo "✅ Summary for commit $commit_short_hash appended to $TEX_FILE_PATH"
     else
         echo "❌ Hook Error: Failed to move temporary TeX file $TMP_TEX_FILE to $TEX_FILE_PATH." >&2
-        rm -f "$TMP_TEX_FILE" # Attempt to clean up
+        rm -f "$TMP_TEX_FILE" 
     fi
 else
     echo "❌ Hook Error: Failed to write summary to $TEX_FILE_PATH using awk (awk exit code: $awk_status). Temporary file: $TMP_TEX_FILE" >&2
-    rm -f "$TMP_TEX_FILE" # Clean up temp file on error
+    rm -f "$TMP_TEX_FILE" 
 fi
 
 echo "✅ Pre-push summary generation process complete for commit $commit_short_hash."
-# Exit 0 to allow the push.
 exit 0
 HOOK_SCRIPT_EOF
-# The above 'HOOK_SCRIPT_EOF' must be on a line by itself, with no leading or trailing whitespace.
 
-# Check if the cat command succeeded in writing the hook file
 if [ $? -ne 0 ]; then
     echo "❌ CRITICAL Error: Failed to write hook script content to $HOOK_PATH." >&2
     echo "This might be due to disk full, permissions issues, or problems with the 'cat' command / here-document structure." >&2
@@ -277,8 +268,7 @@ fi
 echo "✅ Pre-push hook content successfully written to $HOOK_PATH."
 echo "Checkpoint 11: Hook content written."
 
-# Verify file exists and is not empty
-if [ ! -s "$HOOK_PATH" ]; then # -s checks if file exists and has a size greater than zero
+if [ ! -s "$HOOK_PATH" ]; then 
     echo "❌ CRITICAL Error: Hook file $HOOK_PATH was NOT created or is EMPTY." >&2
     echo "This indicates a fundamental problem with the script writing process. Check permissions and disk space." >&2
     exit 1
@@ -286,7 +276,6 @@ fi
 echo "✅ Hook file $HOOK_PATH exists and is not empty."
 echo "Checkpoint 12: Hook file verified (exists and not empty)."
 
-# Make the hook executable
 chmod +x "$HOOK_PATH"
 if [ $? -ne 0 ]; then
     echo "❌ CRITICAL Error: Failed to make hook script $HOOK_PATH executable. Check permissions." >&2
