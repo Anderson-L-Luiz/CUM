@@ -9,7 +9,7 @@ It's not just a tool, it's an experience. C.U.M. diligently observes your coding
 **C.U.M. (Commit User Modification)** is an automated system that enhances your Git workflow by:
 
 1.  **Analyzing your code changes** (the "User Modifications") upon every `git commit`.
-2.  **Generating a high-level summary** of these changes using a powerful Large Language Model (LLM) served via vLLM.
+2.  **Generating a high-level summary** of these changes using a powerful Large Language Model (LLM).
 3.  **Appending this summary** to a dedicated LaTeX report file (`CUM_report/commit_log.tex`) within your repository.
 4.  **Automatically amending the commit** to include this updated report, ensuring the summary is perfectly in sync with the changes it describes.
 
@@ -21,7 +21,7 @@ Essentially, C.U.M. makes your commits self-documenting in a beautifully formatt
 * **LaTeX Report Generation:** Creates and maintains a `commit_log.tex` file, chronicling your project's evolution with AI-generated insights.
 * **Seamless Git Integration:** Uses a `post-commit` Git hook for a smooth, behind-the-scenes operation.
 * **In-Sync Documentation:** By amending the commit, the summary for commit `X` is included *within* commit `X` itself. No more out-of-sync generated files!
-* **Configurable LLM Backend:** Points to a vLLM instance, with the model and endpoint easily configurable.
+* **Configurable LLM Backend:** Designed to interface with LLM inference engines like SERAPHIM.
 
 ## How It Works
 
@@ -31,7 +31,7 @@ C.U.M. is deployed via an installation script (`install_cum.sh`) that sets up a 
 2.  After your initial commit is successfully created, the `post-commit` hook automatically triggers.
 3.  The hook script:
     * Extracts the diff of the commit you just made.
-    * Sends this diff to your configured vLLM API endpoint to get a summary.
+    * Sends this diff to your configured LLM API endpoint (e.g., hosted by SERAPHIM) to get a summary.
     * Formats the summary and appends it as a new section to the `CUM_report/commit_log.tex` file.
     * Adds the updated `commit_log.tex` to the staging area.
     * Amends the commit you just made (`git commit --amend --no-edit -C HEAD`), incorporating the updated LaTeX report directly into it.
@@ -42,7 +42,7 @@ C.U.M. is deployed via an installation script (`install_cum.sh`) that sets up a 
 * **Linux-based System:** The installation script primarily uses `apt` for package management, with attempts for `yum` and `brew`.
 * **Git:** Obviously!
 * **jq & curl:** These command-line tools are used for interacting with the API and handling JSON. The installation script will attempt to install them if they are missing.
-* **Running vLLM Instance:** You need a vLLM server running and accessible, serving the desired model (default is `deepseek-ai/deepseek-moe-16b-chat`).
+* **Running SERAPHIM Inference Engine:** C.U.M. sends its summarization requests to an LLM served via the [**SERAPHIM engine**](https://github.com/Anderson-L-Luiz/SERAPHIM). SERAPHIM, which utilizes vLLM for high-performance inference, must be running and accessible, serving the model specified in the C.U.M. configuration (default: `deepseek-ai/deepseek-moe-16b-chat`).
 * **LaTeX Distribution:** To compile the generated `CUM_report/commit_log.tex` file into a viewable document (e.g., PDF using `pdflatex`). Make sure you have common packages like `lmodern`, `courier`, `hyperref`, `parskip`, `amsmath`.
 
 ## Installation
@@ -64,9 +64,9 @@ C.U.M. is deployed via an installation script (`install_cum.sh`) that sets up a 
 
 The C.U.M. system relies on a few settings primarily found within the hook script itself:
 
-* **`VLLM_API_URL`**: The full URL to your vLLM API endpoint.
+* **`VLLM_API_URL`**: The full URL to your SERAPHIM/vLLM API endpoint.
     * Default in script: `http://10.16.246.2:8001/v1/chat/completions`
-* **`MODEL_NAME`**: The name of the model as recognized by your vLLM instance.
+* **`MODEL_NAME`**: The name of the model as recognized by your SERAPHIM/vLLM instance.
     * Default in script: `deepseek-ai/deepseek-moe-16b-chat`
 * **`MAX_TOKENS`**: Maximum tokens for the LLM summary.
     * Default in script: `700`
@@ -84,8 +84,8 @@ Once C.U.M. is installed, your Git workflow for committing changes remains large
 2.  Stage your changes: `git add <your-files>`
 3.  Commit your changes: `git commit -m "Your awesome commit message"` (or any way you normally commit).
 
-   * Upon successful commit, the C.U.M. `post-commit` hook will run automatically. You'll see output in your terminal indicating it's analyzing the commit, contacting the LLM, and amending the commit.
-   * The `CUM_report/commit_log.tex` file will be updated with the new summary and this change will be included in the commit you just made.
+    * Upon successful commit, the C.U.M. `post-commit` hook will run automatically. You'll see output in your terminal indicating it's analyzing the commit, contacting the LLM, and amending the commit.
+    * The `CUM_report/commit_log.tex` file will be updated with the new summary and this change will be included in the commit you just made.
 
 4.  **Push your changes:** `git push`
 5.  **View the Report:**
@@ -104,28 +104,34 @@ Once C.U.M. is installed, your Git workflow for committing changes remains large
     * Verify that `.git/hooks/post-commit` exists and is executable.
     * Check `git config core.hooksPath`. If set, Git looks for hooks there instead of `.git/hooks/`. Unset it for your repo (`git config --unset core.hooksPath`) or install the hook to the custom path.
 * **API Errors (e.g., 404, connection refused, parsing issues):**
-    * Verify your vLLM server is running and accessible at the `VLLM_API_URL` configured in the hook.
-    * Ensure the API endpoint (e.g., `/v1/chat/completions`) is correct for your vLLM setup. You can often find available endpoints by visiting `http://<your-vllm-ip>:<port>/docs`.
-    * Check that `MODEL_NAME` matches how the model is identified by vLLM.
-    * Review the vLLM server logs for any errors when the hook attempts a request.
+    * Verify your SERAPHIM/vLLM server is running and accessible at the `VLLM_API_URL` configured in the hook.
+    * Ensure the API endpoint (e.g., `/v1/chat/completions`) is correct for your server setup. You can often find available endpoints by visiting `http://<your-server-ip>:<port>/docs` (if provided by SERAPHIM/vLLM).
+    * Check that `MODEL_NAME` matches how the model is identified by the server.
+    * Review the SERAPHIM/vLLM server logs for any errors when the hook attempts a request.
     * The hook will output `curl` error codes and snippets of the API response if it fails to parse the summary, which can help diagnose issues.
 * **LaTeX Compilation Errors:**
     * Ensure you have a working LaTeX distribution with standard packages installed (e.g., `lmodern`, `courier`, `hyperref`, `parskip`, `amsmath`).
     * Check `commit_log.log` for specific LaTeX errors after attempting compilation.
 
-## Uninstallation
+## How to clean out your C.U.M.
 
-To remove C.U.M. from your repository:
+If you wish to remove C.U.M. from your repository and stop the automatic summarization:
 
-1.  Delete the post-commit hook:
+1.  **Delete the post-commit hook:**
     ```bash
     rm .git/hooks/post-commit
     ```
-2.  (Optional) Delete the generated report directory:
+    (If you are unsure of the exact path, it's the `HOOK_PATH` referred to in the installation script, typically `your_project_root/.git/hooks/post-commit`)
+
+2.  **(Optional) Delete the generated report directory:**
+    If you no longer want the `CUM_report` directory and its contents (`commit_log.tex`, compiled PDFs, etc.), you can remove it:
     ```bash
     rm -rf CUM_report
     ```
-3.  (Optional) If you want to remove previously generated LaTeX content from your Git history, that would require more advanced Git operations (like `git filter-branch` or `bfg-repo-cleaner`) and should be done with extreme caution.
+    Remember to `git add .` and `git commit` this deletion if you want to remove it from the repository's history going forward.
+
+3.  **(Optional) Advanced: Removing previously generated LaTeX content from Git history:**
+    If you want to entirely remove all traces of the `CUM_report` directory and `commit_log.tex` from your project's *past* Git history, this requires more advanced Git operations like `git filter-repo` (recommended over `git filter-branch`) or the BFG Repo-Cleaner. **These operations rewrite history and should be done with extreme caution, especially if the repository is shared.** Make sure to back up your repository before attempting such operations.
 
 ---
 
