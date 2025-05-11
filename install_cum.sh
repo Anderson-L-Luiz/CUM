@@ -1,9 +1,12 @@
 #!/bin/bash
 
-set -e
+# Script to automate the setup of the Git hook and required tools
+
+set -e # Exit immediately if a command exits with a non-zero status.
 
 echo "Starting CUM Report installation and setup..."
 
+# --- Check if this is a Git repository ---
 if ! git rev-parse --is-inside-work-tree &> /dev/null; then
   echo "Error: This script must be run from the root of a Git repository."
   exit 1
@@ -11,6 +14,10 @@ fi
 
 echo "Detected Git repository."
 
+# --- Install required tools (jq, curl) ---
+echo "Installing required tools (jq, curl)..."
+
+# Function to install a package and handle errors
 install_package() {
   local package="$1"
   if ! command -v "$package" &> /dev/null; then
@@ -31,9 +38,24 @@ install_package() {
 install_package "jq"
 install_package "curl"
 
-CUM_REPORT_DIR="CUM_report"
-mkdir -p "$CUM_REPORT_DIR"
+echo "All necessary tools (jq, curl) are installed."
 
+# --- Create the CUM_report folder ---
+CUM_REPORT_DIR="CUM_report"
+if [ ! -d "$CUM_REPORT_DIR" ]; then
+  echo "Creating CUM_report directory..."
+  mkdir "$CUM_REPORT_DIR"
+  if [ $? -eq 0 ]; then
+    echo "CUM_report directory created."
+  else
+    echo "Error creating CUM_report directory. Please create it manually and rerun this script."
+    exit 1
+  fi
+else
+  echo "CUM_report directory already exists."
+fi
+
+# --- Create the initial .tex file ---
 INITIAL_TEX_FILE="$CUM_REPORT_DIR/commit_log.tex"
 if [ ! -f "$INITIAL_TEX_FILE" ]; then
   echo "Creating initial LaTeX file: $INITIAL_TEX_FILE"
@@ -50,52 +72,69 @@ if [ ! -f "$INITIAL_TEX_FILE" ]; then
 This document contains summaries of commits in this repository.
 \\end{document}
 EOF
-  echo "Initial LaTeX file created."
+  if [ $? -eq 0 ]; then
+    echo "Initial LaTeX file created."
+  else
+    echo "Error creating initial LaTeX file.  Please create it manually and rerun this script."
+    exit 1
+  fi
 else
   echo "Initial LaTeX file already exists."
 fi
 
-HOOK_PATH=".git/hooks/pre-push"
-echo "Installing pre-push hook..."
+# --- Install the pre-push hook ---
+HOOK_PATH=".git/hooks/pre-push" # Correct path for pre-push hook
+echo "Installing pre-push hook to $HOOK_PATH..."
 
-read -r -d '' PRE_PUSH_HOOK << 'EOF'
-#!/bin/bash
+# Embedded pre-push hook script (Corrected and improved)
+PRE_PUSH_HOOK='#!/bin/bash
 
 echo "🔥 Running CUM pre-push hook..."
 
-# Get the last commit on current branch
+# Check if there are commits to push
+if ! git rev-parse --verify --quiet HEAD; then
+  echo "No commits to push."
+  exit 0 # Exit cleanly, no error
+fi
+
+# Get the last commit on current branch.
 commit=$(git rev-parse HEAD)
+echo "Last commit: $commit"
 
 # Get the diff
 diff=$(git show --format="--pretty=format:" "$commit")
 
-# Prompt
+# Prompt the LLM
 prompt="Summarize the following code changes and explain what they likely achieve at a high level:\n\n$diff"
 
 # vLLM configuration
-VLLM_API_URL="http://10.16.246.2:8000/generate"
-MODEL_NAME="deepseek-ai/deepseek-moe-16b-chat"
+VLLM_API_URL="http://10.16.246.2:8000/generate" #  ***CHANGE IF NEEDED***
+MODEL_NAME="deepseek-ai/deepseek-moe-16b-chat" #  ***CHANGE IF NEEDED***
 
 # Format payload
-payload=$(printf '{ "prompt": "%s", "model": "%s", "stream": false, "max_tokens": 700 }' "$prompt" "$MODEL_NAME")
+payload=$(printf \'{ "prompt": "%s", "model": "%s", "stream": false, "max_tokens": 700 }\' "$prompt" "$MODEL_NAME")
+echo "Payload: $payload"
 
 # Call API
 response=$(curl -s -X POST -H "Content-Type: application/json" -d "$payload" "$VLLM_API_URL")
 
+echo "vLLM Response: $response" # Print full response for debugging
+
 # Extract response
-if echo "$response" | jq -e '.results[0].text'; then
-  summary=$(echo "$response" | jq -r '.results[0].text')
+if echo "$response" | jq -e \'.results[0].text\'; then
+  summary=$(echo "$response" | jq -r \'.results[0].text\')
   echo -e "✅ Commit summary:\n$summary"
 else
   summary="❌ Failed to get summary."
   echo "Error: $response"
+  exit 1 # Exit with error code to prevent push if summary fails.
 fi
 
 # Escape LaTeX characters
-escaped_summary=$(echo "$summary" | sed -e 's/\\/\\\\/g' -e 's/{/\\{/g' -e 's/}/\\}/g' \
-                                         -e 's/\$/\\\$/g' -e 's/&/\\&/g' -e 's/#/\\#/g' \
-                                         -e 's/_/\\_/g' -e 's/%/\\%/g' -e 's/~/\\~{}/g' -e 's/\^/\\^{}/g' \
-                                         -e 's/</\\textless{}/g' -e 's/>/\\textgreater{}/g')
+escaped_summary=$(echo "$summary" | sed -e \'s/\\/\\\\/g\' -e \'s/{/\\\\{/g\' -e \'s/}/\\\\}/g\' \
+                                 -e \'s/\$/\\\\$/g\' -e \'s/&/\\\\&/g\' -e \'s/#/\\\\#/g\' \
+                                 -e \'s/_/\\\\_/g\' -e \'s/%/\\\\%/g\' -e \'s/~/\\\\~{}/g\' -e \'s/\^/\\\\^{}/g\' \
+                                 -e \'s/</\\\\textless{}/g\' -e \'>/\\\\textgreater{}/g\')
 
 # Append LaTeX section
 title="Commit Summary - $(date +%Y%m%d_%H%M%S)"
@@ -103,12 +142,25 @@ section="\\section{$title}
 $escaped_summary
 "
 
-echo "$section" >> CUM_report/commit_log.tex
+echo "$section" >> "CUM_report/commit_log.tex"
 echo "✅ Summary added to CUM_report/commit_log.tex"
+
+exit 0 # Ensure the hook exits cleanly after processing
 EOF
 
-echo "$PRE_PUSH_HOOK" > "$HOOK_PATH"
+echo "$PRE_PUSH_HOOK" > "$HOOK_PATH" # Use the correct HOOK_PATH
 chmod +x "$HOOK_PATH"
 
-echo "✅ pre-push hook installed successfully."
-echo "Push any commit and it will be summarized locally before sending to GitHub."
+if [ $? -eq 0 ]; then
+  echo "pre-push hook installed successfully."
+else
+  echo "Error installing pre-push hook.  Please copy it manually and rerun this script."
+  exit 1
+fi
+
+echo "CUM Report installation and setup complete."
+echo "Next steps:"
+echo "1.  Ensure your vllm server with the Deepseek MoE-16B-Chat model is running and accessible at http://10.16.246.2:8000 (or the correct address)."
+echo "2.  Make sure the \'VLLM_API_URL\' and \'MODEL_NAME\' variables in the .git/hooks/pre-push script are correct."
+echo "3.  Push to a branch to generate the first report."
+exit 0
