@@ -64,75 +64,72 @@ if [ ! -f "$INITIAL_TEX_FILE" ]; then
 \\tableofcontents
 \\section{Introduction}
 This document contains summaries of commits in this repository.
-\\end{document}
+
 EOF
   echo "Initial LaTeX file created."
 else
   echo "Initial LaTeX file already exists."
 fi
 
-# --- Copy the post-receive hook ---
-HOOK_PATH=".git/hooks/post-receive"
+# --- Set up the pre-push hook ---
+HOOK_PATH=".git/hooks/pre-push"
 if [ -f "$HOOK_PATH" ]; then
-  echo "post-receive hook already exists. Overwriting."
+  echo "pre-push hook already exists. Overwriting."
 fi
 
-read -r -d '' POST_RECEIVE_CONTENT << 'EOF'
+read -r -d '' PRE_PUSH_CONTENT << 'EOF'
 #!/bin/bash
 
-while read oldrev newrev ref
-do
-  commit=$(git rev-parse "$newrev")
-  branch=$(git rev-parse --abbrev-ref "$ref")
+# Get the latest commit on the current branch
+commit=$(git rev-parse HEAD)
+branch=$(git rev-parse --abbrev-ref HEAD)
 
-  if [ -n "$branch" ]; then
-    echo "Processing push to $branch..."
+echo "Processing push from local branch: $branch"
 
-    diff=$(git show --format="--pretty=format:" "$commit" "$(git rev-parse "$commit^")")
-    prompt="Summarize the following code changes and explain what they likely achieve at a high level:\n\n$diff"
+# Get the diff of the last commit
+diff=$(git show --format="--pretty=format:" "$commit" "$(git rev-parse "$commit^")")
 
-    VLLM_API_URL="http://10.16.246.2:8000/generate"
-    MODEL_NAME="deepseek-ai/deepseek-moe-16b-chat"
+prompt="Summarize the following code changes and explain what they likely achieve at a high level:\n\n$diff"
 
-    payload=$(printf '{ "prompt": "%s", "model": "%s", "stream": false, "max_tokens": 700 }' "$prompt" "$MODEL_NAME")
-    response=$(curl -s -X POST -H "Content-Type: application/json" -d "$payload" "$VLLM_API_URL")
+VLLM_API_URL="http://10.16.246.2:8000/generate"
+MODEL_NAME="deepseek-ai/deepseek-moe-16b-chat"
 
-    if echo "$response" | jq -e '.results[0].text'; then
-      summary=$(echo "$response" | jq -r '.results[0].text')
-      echo -e "Deepseek MoE-16B-Chat Summary:\n$summary"
-    else
-      summary="Failed to generate summary from Deepseek MoE-16B-Chat."
-      echo "Error generating summary: $response"
-    fi
+payload=$(printf '{ "prompt": "%s", "model": "%s", "stream": false, "max_tokens": 700 }' "$prompt" "$MODEL_NAME")
+response=$(curl -s -X POST -H "Content-Type: application/json" -d "$payload" "$VLLM_API_URL")
 
-    title="Commit Summary - $(date +%Y%m%d_%H%M%S)"
-    escaped_summary=$(echo "$summary" | sed -e 's/\\/\\\\/g' -e 's/{/\\{/g' -e 's/}/\\}/g' \
-                                             -e 's/\$/\\\$/g' -e 's/&/\\&/g' -e 's/#/\\#/g' \
-                                             -e 's/_/\\_/g' -e 's/%/\\%/g' -e 's/~/\\~{}/g' -e 's/\^/\\^{}/g' \
-                                             -e 's/</\\textless{}/g' -e 's/>/\\textgreater{}/g')
+if echo "$response" | jq -e '.results[0].text' &> /dev/null; then
+  summary=$(echo "$response" | jq -r '.results[0].text')
+  echo -e "Deepseek MoE-16B-Chat Summary:\n$summary"
+else
+  summary="Failed to generate summary from Deepseek MoE-16B-Chat."
+  echo "Error generating summary: $response"
+fi
 
-    latex_section="\\section{$title}
+title="Commit Summary - $(date +%Y%m%d_%H%M%S)"
+escaped_summary=$(echo "$summary" | sed -e 's/\\/\\\\/g' -e 's/{/\\{/g' -e 's/}/\\}/g' \
+                                         -e 's/\$/\\\$/g' -e 's/&/\\&/g' -e 's/#/\\#/g' \
+                                         -e 's/_/\\_/g' -e 's/%/\\%/g' -e 's/~/\\~{}/g' -e 's/\^/\\^{}/g' \
+                                         -e 's/</\\textless{}/g' -e 's/>/\\textgreater{}/g')
+
+latex_section="\\section{$title}
 $escaped_summary
+
 "
 
-    tex_file="CUM_report/commit_log.tex"
-    echo "$latex_section" >> "$tex_file"
-    echo "Summary added to $tex_file"
-  else
-    echo "Skipping push to $ref (not a branch)."
-  fi
-done
+tex_file="CUM_report/commit_log.tex"
+echo "$latex_section" >> "$tex_file"
+echo "Summary added to $tex_file"
 EOF
 
-echo "$POST_RECEIVE_CONTENT" > "$HOOK_PATH"
+echo "$PRE_PUSH_CONTENT" > "$HOOK_PATH"
 
 chmod +x "$HOOK_PATH"
-echo "post-receive hook made executable."
+echo "pre-push hook made executable."
 
 echo "CUM Report installation and setup complete."
 echo "Next steps:"
 echo "1. Ensure your vllm server with the Deepseek MoE-16B-Chat model is running at http://10.16.246.2:8000."
-echo "2. Make sure VLLM_API_URL and MODEL_NAME are correctly set in .git/hooks/post-receive."
-echo "3. Push to a branch to generate the first report."
+echo "2. Make sure VLLM_API_URL and MODEL_NAME are correctly set in .git/hooks/pre-push."
+echo "3. Run 'git push' to trigger the commit summarization."
 
 exit 0
