@@ -2,7 +2,9 @@
 
 It's not just a tool, it's an experience. C.U.M. diligently observes your coding endeavors and eloquently summarizes them, ensuring every brilliant modification you commit is duly noted and chronicled.
 
-![Brilliant](brilliant.gif)
+<div align="center">
+  <img src="CUM.gif" alt="CUM">
+</div>
 
 ## What is C.U.M.?
 
