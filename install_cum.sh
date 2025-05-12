@@ -210,7 +210,7 @@ fi
 
 sanitized_diff=$(echo "$diff_output_raw" | tr -d '\b\f') # Remove backspace & form-feed
 
-MAX_DIFF_CHARS=5000 # Tunable: adjust if LLM is stable with more, or unstable with this
+MAX_DIFF_CHARS=10000 # Tunable: adjust if LLM is stable with more, or unstable with this
 truncated_diff=$(echo "$sanitized_diff" | head -c "$MAX_DIFF_CHARS")
 
 diff_to_send="$truncated_diff"
