@@ -302,7 +302,7 @@ for file_path in "${changed_files_array[@]}"; do
 
             # Construct prompt for this chunk
             user_prompt_content="File: '$file_path' (Commit: $commit_short_hash)${part_indicator}. "
-            user_prompt_content+="Summarize the following code changes. Explain what the changes likely achieve at a high level and their potential impact or purpose. Be concise."
+            user_prompt_content+="Summarize the following code changes. You are the developer and understand the code and repo completely. Explain what the changes likely achieve at a high level and their potential impact or purpose. Be concise and precise."
             if [ "$num_chunks" -gt 1 ]; then
                 if [ "$chunk_num" -lt "$num_chunks" ]; then
                     user_prompt_content+=" This is part $chunk_num of $num_chunks of the diff. Please summarize this part. More content will follow."

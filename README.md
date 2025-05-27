@@ -1,3 +1,7 @@
+# Latest version:
+
+ install_cum_coder.sh
+
 # C.U.M - Commit User Modification
 
 It's not just a tool, it's an experience. C.U.M. diligently observes your coding endeavors and eloquently summarizes them, ensuring every brilliant modification you commit is duly noted and chronicled.
